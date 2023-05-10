@@ -1,0 +1,16 @@
+[package]
+name = "minecraft"
+version = "0.1.0"
+authors = ["Lim jaemin"]
+description = "Implementation of Minecraft written in Rust"
+repository = "https://github.com/light-canle/minecraft-rs"
+readme = "README.md"
+keywords = ["minecraft", "game", "OpenGL"]
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+gl = "0.14.0"
+glfw = "0.51.0"
