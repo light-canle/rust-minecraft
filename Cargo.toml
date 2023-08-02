@@ -3,7 +3,7 @@ name = "minecraft"
 version = "0.1.0"
 authors = ["Lim jaemin"]
 description = "Implementation of Minecraft written in Rust"
-repository = "https://github.com/light-canle/minecraft-rs"
+repository = "https://github.com/light-canle/rust-minecraft"
 readme = "README.md"
 keywords = ["minecraft", "game", "OpenGL"]
 license = "MIT"
@@ -13,4 +13,5 @@ edition = "2021"
 
 [dependencies]
 gl = "0.14.0"
-glfw = "0.51.0"
+glfw = "0.52.0"
+rand = "0.8.5"
