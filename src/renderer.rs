@@ -5,7 +5,7 @@ use std::os::raw::c_void;
 pub struct QuadProps{
     pub position : (f32, f32),
     pub size : (f32, f32),
-    pub color : (f32, f32, f32, f32),
+    pub texture_id : u32,
 }
 
 pub struct Renderer{
@@ -54,15 +54,15 @@ impl Renderer{
             binding_index_pos, // 속성 인덱스
             vbo, // VBO
             0, // offset
-            (6 * std::mem::size_of::<f32>()) as i32 // 정점 1개의 데이터 크기
+            (5 * std::mem::size_of::<f32>()) as i32 // 정점 1개의 데이터 크기
         ));
-        // rgba 색상
+        // 텍스쳐 정보
         gl_call!(gl::EnableVertexArrayAttrib(vao, 1));
 
         gl_call!(gl::VertexArrayAttribFormat(
             vao,
             1,
-            4,
+            3,
             gl::FLOAT,
             gl::FALSE,
             (2 * std::mem::size_of::<f32>()) as u32
@@ -75,7 +75,7 @@ impl Renderer{
             binding_index_color,
             vbo,
             0,
-            (6 * std::mem::size_of::<f32>()) as i32
+            (5 * std::mem::size_of::<f32>()) as i32
         ));
 
         Renderer {
@@ -89,14 +89,15 @@ impl Renderer{
     }
 
     pub fn submit_quad(&mut self, quad_props : QuadProps){
-        let QuadProps { position : (x, y), size : (w, h), color : (r, g, b, a)} = quad_props;
+        let QuadProps { position : (x, y), size : (w, h), texture_id} = quad_props;
         // 사각형의 정보를 넣음
-        self.vertices.extend_from_slice(&[x, y, r, g, b, a]);
-        self.vertices.extend_from_slice(&[x + w, y, r, g, b, a]);
-        self.vertices.extend_from_slice(&[x + w, y + h, r, g, b, a]);
-        self.vertices.extend_from_slice(&[x + w, y + h, r, g, b, a]);
-        self.vertices.extend_from_slice(&[x, y + h, r, g, b, a]);
-        self.vertices.extend_from_slice(&[x, y, r, g, b, a]);
+        let texture_id = texture_id as f32;
+        self.vertices.extend_from_slice(&[x, y, texture_id, 0.0, 0.0]);
+        self.vertices.extend_from_slice(&[x + w, y, texture_id, 1.0, 0.0]);
+        self.vertices.extend_from_slice(&[x + w, y + h, texture_id, 1.0, 1.0]);
+        self.vertices.extend_from_slice(&[x + w, y + h, texture_id, 1.0, 1.0]);
+        self.vertices.extend_from_slice(&[x, y + h, texture_id, 0.0, 1.0]);
+        self.vertices.extend_from_slice(&[x, y, texture_id, 0.0, 0.0]);
     }
 
     pub fn end_batch(&mut self){

@@ -1,12 +1,18 @@
 pub mod renderer;
 pub mod debugging;
+pub mod shader;
+pub mod texture;
 
-use renderer::{QuadProps, Renderer};
+use crate::renderer::{QuadProps, Renderer};
+use crate::shader::{ShaderPart, ShaderProgram};
+use crate::texture::create_texture;
 
 use glfw::ffi::{glfwSwapInterval, glfwGetTime};
 use glfw::Key;
 use glfw::{Context, WindowHint};
 use rand::Rng;
+use std::ffi::CString;
+
 
 #[derive(Default)]
 pub struct FrameRate{
@@ -61,8 +67,14 @@ fn main() {
     // 수직 동기화(Vsync)
     unsafe{glfwSwapInterval(0)};
 
+    let id_cobble = create_texture("blocks/cobblestone.png");
+    let id_tnt = create_texture("blocks/tnt.png");
+
     let mut renderer = Renderer::new(100000);
 
+    let vert = ShaderPart::from_vert_source(&CString::new(include_str!("shaders/vert.vert")).unwrap()).unwrap();
+    let frag = ShaderPart::from_frag_source(&CString::new(include_str!("shaders/frag.frag")).unwrap()).unwrap();
+    let program = ShaderProgram::from_shaders(vert, frag).unwrap();
     // fps 객체 생성
     let mut framerate = FrameRate {
         frame_count : 0,
@@ -85,12 +97,7 @@ fn main() {
                         (window.get_cursor_pos().1 as f32).to_range(0.0, 500.0, 1.0, -1.0)
                     ),
                     size : (0.5, 0.5),
-                    color : (
-                        rng.gen_range(0.0..=1.0),
-                        rng.gen_range(0.0..=1.0),
-                        rng.gen_range(0.0..=1.0),
-                        1.0
-                    )
+                    texture_id: rng.gen_range(0..2)
                 }),
                 _ => {}
             }
@@ -98,6 +105,11 @@ fn main() {
 
         gl_call!(gl::ClearColor(1.0, 1.0, 1.0, 1.0));
         gl_call!(gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT));
+
+        program.use_program();
+        program.set_uniform1iv("textures", &[0, 1]);
+        gl_call!(gl::BindTextureUnit(0, id_cobble));
+        gl_call!(gl::BindTextureUnit(1, id_tnt));
 
         renderer.begin_batch();
 
