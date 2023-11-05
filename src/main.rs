@@ -2,38 +2,17 @@ pub mod renderer;
 pub mod debugging;
 pub mod shader;
 pub mod texture;
+pub mod ecs;
+pub mod shapes;
 
-use crate::renderer::{QuadProps, Renderer};
 use crate::shader::{ShaderPart, ShaderProgram};
-use crate::texture::create_texture;
+use crate::debugging::*;
 
-use glfw::ffi::{glfwSwapInterval, glfwGetTime};
-use glfw::Key;
-use glfw::{Context, WindowHint};
-use rand::Rng;
+use glfw::ffi::glfwSwapInterval;
+use glfw::{Context, WindowHint, CursorMode};
 use std::ffi::CString;
+use std::os::raw::c_void;
 
-
-#[derive(Default)]
-pub struct FrameRate{
-    pub frame_count : u32,
-    pub last_frame_time : f64
-}
-
-impl FrameRate{
-    fn run(&mut self){
-        self.frame_count += 1;
-        
-        let current_time = unsafe { glfwGetTime() };
-        let delta : f64 = current_time - self.last_frame_time;
-
-        if delta >= 1.0 {
-            self.last_frame_time = current_time;
-            println!("FPS : {}", f64::from(self.frame_count) / delta);
-            self.frame_count = 0;
-        }
-    }
-}
 
 fn main() {
     // glfw 초기화
@@ -43,7 +22,7 @@ fn main() {
     glfw.window_hint(WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core,));
     glfw.window_hint(WindowHint::OpenGlDebugContext(true));
     // 윈도우 크기 설정
-    let window_size = (500, 500);
+    let window_size = (800, 800);
     let window_title = "Minecraft";
 
     // 윈도우 창 생성
@@ -62,28 +41,56 @@ fn main() {
     window.set_key_polling(true);
     window.set_cursor_pos_polling(true);
     window.set_raw_mouse_motion(true);
+    window.set_cursor_mode(CursorMode::Disabled);
+    window.set_cursor_pos(400.0, 400.0);
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
     // 수직 동기화(Vsync)
     unsafe{glfwSwapInterval(0)};
 
-    let id_cobble = create_texture("blocks/cobblestone.png");
-    let id_tnt = create_texture("blocks/tnt.png");
+    gl_call!(gl::Enable(gl::DEBUG_OUTPUT));
+    gl_call!(gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+    gl_call!(gl::DebugMessageCallback(Some(debug_message_callback), 0 as *const c_void));
+    gl_call!(gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE, gl::DONT_CARE, 0, 0 as *const u32, gl::TRUE));
 
-    let mut renderer = Renderer::new(100000);
+    gl_call!(gl::Enable(gl::CULL_FACE));
+    // Backface culling
+    gl_call!(gl::CullFace(gl::BACK));
+    // enable depth test (z-buffer)
+    gl_call!(gl::Enable(gl::DEPTH_TEST));
+    gl_call!(gl::Enable(gl::BLEND));
+    gl_call!(gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA));
+    gl_call!(gl::Viewport(0, 0, 800, 800));
 
     let vert = ShaderPart::from_vert_source(&CString::new(include_str!("shaders/vert.vert")).unwrap()).unwrap();
     let frag = ShaderPart::from_frag_source(&CString::new(include_str!("shaders/frag.frag")).unwrap()).unwrap();
     let program = ShaderProgram::from_shaders(vert, frag).unwrap();
-    // fps 객체 생성
-    let mut framerate = FrameRate {
-        frame_count : 0,
-        last_frame_time : 0.0
-    };
 
-    let mut quads = Vec::new();
-    let mut rng = rand::thread_rng();
+    let cobblestone = texture::create_texture("blocks/cobblestone.png");
+    gl_call!(gl::ActiveTexture(gl::TEXTURE0));
+    gl_call!(gl::BindTexture(gl::TEXTURE_2D, cobblestone));
 
+    let cube = shapes::unit_cube_array();
+
+    let mut cube_vbo = 0;
+    gl_call!(gl::CreateBuffers(1, &mut cube_vbo));
+    gl_call!(gl::NamedBufferData(cube_vbo, (cube.len() * std::mem::size_of::<f32>()) as isize, cube.as_ptr() as *mut c_void, gl::STATIC_DRAW));
+
+    let mut cube_vao = 0;
+    gl_call!(gl::CreateVertexArrays(1, &mut cube_vao));
+
+    gl_call!(gl::EnableVertexArrayAttrib(cube_vao, 0));
+    gl_call!(gl::EnableVertexArrayAttrib(cube_vao, 1));
+
+    gl_call!(gl::VertexArrayAttribFormat(cube_vao, 0, 3 as i32, gl::FLOAT, gl::FALSE, 0));
+    gl_call!(gl::VertexArrayAttribFormat(cube_vao, 1, 2 as i32, gl::FLOAT, gl::FALSE, 3 * std::mem::size_of::<f32>() as u32));
+
+    gl_call!(gl::VertexArrayAttribBinding(cube_vao, 0, 0));
+    gl_call!(gl::VertexArrayAttribBinding(cube_vao, 1, 0));
+
+    gl_call!(gl::VertexArrayVertexBuffer(cube_vao, 0, cube_vbo, 0, 5 * std::mem::size_of::<f32>() as i32));
+
+    gl_call!(gl::BindVertexArray(cube_vao));
     // 메인 루프
     while !window.should_close() {
         // 이벤트를 받고 처리
@@ -91,48 +98,17 @@ fn main() {
 
         for(_, event) in glfw::flush_messages(&events){
             match event{
-                glfw::WindowEvent::Key(Key::Space, _, _, _) => quads.push(QuadProps {
-                    position : (
-                        (window.get_cursor_pos().0 as f32).to_range(0.0, 500.0, -1.0, 1.0),
-                        (window.get_cursor_pos().1 as f32).to_range(0.0, 500.0, 1.0, -1.0)
-                    ),
-                    size : (0.5, 0.5),
-                    texture_id: rng.gen_range(0..2)
-                }),
                 _ => {}
             }
         }
-
-        gl_call!(gl::ClearColor(1.0, 1.0, 1.0, 1.0));
-        gl_call!(gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT));
-
+        
         program.use_program();
-        program.set_uniform1iv("textures", &[0, 1]);
-        gl_call!(gl::BindTextureUnit(0, id_cobble));
-        gl_call!(gl::BindTextureUnit(1, id_tnt));
+        gl_call!(gl::ClearColor(0.74, 0.84, 1.0, 1.0));
+        gl_call!(gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
 
-        renderer.begin_batch();
+        gl_call!(gl::DrawArrays(gl::TRIANGLES, 0, 36));
 
-        for quad in &quads{
-            renderer.submit_quad(quad.clone());
-        }
-        renderer.end_batch();
         // 프론트 버퍼와 백 버퍼 교체 - 프리징 방지
         window.swap_buffers();
-
-        framerate.run();
-    }
-}
-
-trait ToRange {
-    fn to_range(&self, old_min: f32, old_max: f32, new_min: f32, new_max: f32) -> f32;
-}
-
-impl ToRange for f32 {
-    fn to_range(&self, old_min: f32, old_max: f32, new_min: f32, new_max: f32) -> f32 {
-        let old_range = old_max - old_min;
-        let new_range = new_max - new_min;
-
-        (((self - old_min) * new_range) / old_range) + new_min
     }
 }

@@ -2,7 +2,7 @@ use crate::gl_call;
 
 use gl;
 use std::os::raw::c_void;
-use image::{GenericImageView, ColorType};
+use image::ColorType;
 
 pub fn create_texture(path: &str) -> u32{
     let mut id = 0;
