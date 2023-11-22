@@ -1,4 +1,3 @@
-
 use specs::prelude::*;
 use crate::renderer::QuadProps;
 use crate::renderer::Renderer;
