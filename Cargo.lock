@@ -420,6 +420,7 @@ dependencies = [
  "itertools",
  "nalgebra",
  "nalgebra-glm",
+ "num-traits",
  "rand",
  "specs",
 ]
