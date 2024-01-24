@@ -9,6 +9,7 @@ pub mod shapes;
 pub mod util;
 pub mod chunk;
 pub mod raycast;
+pub mod chunk_manager;
 
 use crate::shader::{ShaderPart, ShaderProgram};
 use crate::debugging::*;
@@ -21,8 +22,9 @@ use std::ffi::CString;
 use image::ColorType;
 use std::os::raw::c_void;
 use nalgebra_glm::{Vec2, vec2, vec3, pi, IVec3};
-use nalgebra::{Vector3, Matrix4, clamp};
-use crate::chunk::{BlockID, Chunk};
+use nalgebra::{Vector3, clamp};
+use crate::chunk::BlockID;
+use crate::chunk_manager::ChunkManager;
 
 pub struct InputCache{
     pub last_cursor_pos : Vec2,
@@ -173,18 +175,8 @@ fn main() {
     gl_call!(gl::ActiveTexture(gl::TEXTURE0 + 0));
     gl_call!(gl::BindTexture(gl::TEXTURE_2D, atlas));
 
-    let mut chunk = Chunk::empty();
-
-    for y in 0..4{
-        for x in 0..16{
-            for z in 0..16{
-                chunk.set_block(x, y, z, BlockID::COBBLESTONE);
-            }
-        }
-    }
-
-    chunk.regenerate_vbo(&uv_map);
-    gl_call!(gl::BindVertexArray(chunk.vao));
+    let mut chunk_manager = ChunkManager::new();
+    chunk_manager.preload_some_chunks();
 
     let mut input_cache = InputCache::default();
     let mut prev_cursor_pos = (0.0, 0.0);
@@ -215,13 +207,6 @@ fn main() {
                     window.set_should_close(true);
                 }
 
-                glfw::WindowEvent::Key(Key::R, _, Action::Press, _) => {
-                    for _ in 0..16 * 16 * 8{
-                        chunk.set_block(rand::random::<usize>() % 16, rand::random::<usize>() % 16, rand::random::<usize>() % 16, BlockID::AIR);
-                        chunk.regenerate_vbo(&uv_map);
-                    }
-                }
-
                 glfw::WindowEvent::Key(key, _, action, _) => {
                     input_cache.key_states.insert(key, action);
                 }
@@ -229,37 +214,24 @@ fn main() {
                 glfw::WindowEvent::MouseButton(button, Action::Press, _) => {
                     let forward = forward(&camera_rotation);
                     let get_voxel = |x: i32, y: i32, z: i32| {
-                        if x < 0 || y < 0 || z < 0 || x >= 16 || y >= 16 || z >= 16 {
-                            return None;
-                        }
-
-                        let block = chunk.get_block(x as usize, y as usize, z as usize);
-
-                        if block == BlockID::AIR {
-                            return None;
-                        }
-
-                        Some((x as usize, y as usize, z as usize))
+                        chunk_manager.get(x, y, z).filter(|&block| block!= BlockID::AIR).and_then(|_| Some((x, y, z)))
                     };
 
                     let hit =
-                        raycast::raycast(&get_voxel, &camera_position, &forward.normalize(), 4.0);
+                        raycast::raycast(&get_voxel, &camera_position, &forward.normalize(), 400.0);
 
                     if let Some(((x, y, z), normal)) = hit {
                         if button == MouseButton::Button1 {
-                            chunk.set_block(x, y, z, BlockID::AIR);
-                            chunk.regenerate_vbo(&uv_map);
+                            chunk_manager.set(x, y, z, BlockID::AIR)
                         } else if button == MouseButton::Button2 {
-                            let near = IVec3::new(x as i32, y as i32, z as i32) + normal;
-                            let (x, y, z) = (near.x, near.y, near.z);
-
-                            if x < 0 || y < 0 || z < 0 || x >= 16 || y >= 16 || z >= 16 {
-                                continue;
-                            }
-
-                            chunk.set_block(x as usize, y as usize, z as usize, BlockID::DIRT);
-                            chunk.regenerate_vbo(&uv_map);
+                            let near = IVec3::new(x, y, z) + normal;
+                            chunk_manager.set(near.x, near.y, near.z, BlockID::DIRT)
                         }
+
+                        println!("HIT {} {} {}", x, y, z);
+                        dbg!(forward);
+                    } else {
+                        println!("No hit");
                     }
                 }
 
@@ -267,7 +239,7 @@ fn main() {
             }
         }
 
-        let multiplier = 0.01_f32;
+        let multiplier = 0.2_f32;
 
         if input_cache.is_key_pressed(Key::W) {
             camera_position += forward(&camera_rotation).scale(multiplier);
@@ -298,17 +270,10 @@ fn main() {
 
         let projection_matrix = nalgebra_glm::perspective(1.0, pi::<f32>() / 2.0, 0.1, 1000.0);
         
-        let model_matrix = {
-            let translate_matrix = Matrix4::new_translation(&vec3(0.0f32, 0.0, 0.0));
-            let rotate_matrix = Matrix4::from_euler_angles(0.0f32, 0.0, 0.0);
-            let scale_matrix = Matrix4::new_nonuniform_scaling(&vec3(1.0f32, 1.0f32, 1.0f32));
-
-            translate_matrix * rotate_matrix * scale_matrix
-        };
+        chunk_manager.rebuild_dirty_chunks(&uv_map);
         
         program.use_program();
 
-        program.set_uniform_matrix4fv("model", model_matrix.as_ptr());
         program.set_uniform_matrix4fv("view", view_matrix.as_ptr());
         program.set_uniform_matrix4fv("projection", projection_matrix.as_ptr());
         program.set_uniform1i("tex", 0);
@@ -316,7 +281,7 @@ fn main() {
         gl_call!(gl::ClearColor(0.74, 0.84, 1.0, 1.0));
         gl_call!(gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
 
-        gl_call!(gl::DrawArrays(gl::TRIANGLES, 0, chunk.vertices_drawn as i32));
+        chunk_manager.render_loaded_chunks(&mut program);
 
         // 프론트 버퍼와 백 버퍼 교체 - 프리징 방지
         window.swap_buffers();
