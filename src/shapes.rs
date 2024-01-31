@@ -1,17 +1,15 @@
+use crate::chunk_manager::Sides;
+
 #[rustfmt::skip]
 pub fn unit_cube_array(
-    x: f32,
-    y: f32,
-    z: f32,
+    position : (f32, f32, f32),
     uv_bl: (f32, f32),
     uv_tr: (f32, f32),
-    front: bool,
-    back: bool,
-    left: bool,
-    right: bool,
-    up: bool,
-    down: bool,
+    sides : Sides
+
 ) -> Vec<f32> {
+    let (x, y, z) = position;
+    let (right, left, top, bottom, front, back) = sides;
     let mut array = Vec::new();
 
     if front {
@@ -58,7 +56,7 @@ pub fn unit_cube_array(
         ]);
     }
 
-    if up {
+    if top {
         array.extend_from_slice(&[
             0.0 + x, 1.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
             1.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_bl.1,
@@ -69,7 +67,7 @@ pub fn unit_cube_array(
         ]);
     }
 
-    if down {
+    if bottom {
         array.extend_from_slice(&[
             0.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
             1.0 + x, 0.0 + y, 0.0 + z, uv_tr.0, uv_bl.1,
