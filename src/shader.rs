@@ -1,36 +1,39 @@
 use crate::gl_call;
 
 use gl;
-use std::{ffi::{CString, CStr}, sync::Mutex}; // , cell::RefCell
 use std::collections::HashMap;
+use std::{
+    ffi::{CStr, CString},
+    sync::Mutex,
+}; // , cell::RefCell
 
 #[derive(Debug)]
-pub struct ShaderPart{
+pub struct ShaderPart {
     id: u32,
 }
 
-impl ShaderPart{
-    pub fn from_source(source: &CStr, kind: gl::types::GLenum) -> Result<ShaderPart, String>{
+impl ShaderPart {
+    pub fn from_source(source: &CStr, kind: gl::types::GLenum) -> Result<ShaderPart, String> {
         let id = shader_from_source(source, kind)?;
-        Ok(ShaderPart{ id })
+        Ok(ShaderPart { id })
     }
 
-    pub fn from_vert_source(source: &CStr) -> Result<ShaderPart, String>{
+    pub fn from_vert_source(source: &CStr) -> Result<ShaderPart, String> {
         ShaderPart::from_source(source, gl::VERTEX_SHADER)
     }
 
-    pub fn from_frag_source(source: &CStr) -> Result<ShaderPart, String>{
+    pub fn from_frag_source(source: &CStr) -> Result<ShaderPart, String> {
         ShaderPart::from_source(source, gl::FRAGMENT_SHADER)
     }
 }
 
-impl Drop for ShaderPart{
+impl Drop for ShaderPart {
     fn drop(&mut self) {
         gl_call!(gl::DeleteShader(self.id));
     }
 }
 
-fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::types::GLuint, String>{
+fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::types::GLuint, String> {
     let id = gl_call!(gl::CreateShader(kind));
     gl_call!(gl::ShaderSource(id, 1, &source.as_ptr(), std::ptr::null()));
     gl_call!(gl::CompileShader(id));
@@ -38,7 +41,7 @@ fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::type
     let mut success: gl::types::GLint = 1;
     gl_call!(gl::GetShaderiv(id, gl::COMPILE_STATUS, &mut success));
 
-    if success == 0{
+    if success == 0 {
         let mut len: gl::types::GLint = 0;
         gl_call!(gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len));
 
@@ -50,15 +53,15 @@ fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::type
             std::ptr::null_mut(),
             error.as_ptr() as *mut gl::types::GLchar,
         ));
-        
+
         return Err(error.to_string_lossy().into_owned());
     }
 
     Ok(id)
 }
 
-fn create_whitespace_cstring_with_len(len: usize) -> CString{
-    let mut buffer: Vec<u8> = Vec::with_capacity(len+1);
+fn create_whitespace_cstring_with_len(len: usize) -> CString {
+    let mut buffer: Vec<u8> = Vec::with_capacity(len + 1);
     buffer.extend([b' '].iter().cycle().take(len));
 
     unsafe { CString::from_vec_unchecked(buffer) }
@@ -67,20 +70,21 @@ fn create_whitespace_cstring_with_len(len: usize) -> CString{
 // Rc -> Arc
 // RefCell -> Mutex
 // Mutex is "lock"
-// If we can use "lock" then, 
+// If we can use "lock" then,
 
 #[derive(Debug)]
-pub struct ShaderProgram{
+pub struct ShaderProgram {
     id: u32,
     uniform_cache: Mutex<HashMap<String, i32>>,
 }
 
 impl ShaderProgram {
-    pub fn use_program(&self){
+    pub fn use_program(&self) {
         gl_call!(gl::UseProgram(self.id));
     }
 
-    fn get_uniform_location(&mut self, name: &str) -> i32 { // since we get mut variable thus &mut self
+    fn get_uniform_location(&mut self, name: &str) -> i32 {
+        // since we get mut variable thus &mut self
         let location = self.uniform_cache.get_mut().unwrap().get(name).cloned(); // Since, we just use one line thus we use unwrap()
         match location {
             None => {
@@ -88,12 +92,18 @@ impl ShaderProgram {
                 let location = gl_call!(gl::GetUniformLocation(self.id, c_name.as_ptr()));
                 // Error checking
                 if location == -1 {
-                    panic!("Can't find uniform '{}' in program with id: {}", name, self.id);
+                    panic!(
+                        "Can't find uniform '{}' in program with id: {}",
+                        name, self.id
+                    );
                 }
                 println!("New uniform location {}: {}", &name, &location);
-                self.uniform_cache.get_mut().unwrap().insert(name.to_owned(), location);
+                self.uniform_cache
+                    .get_mut()
+                    .unwrap()
+                    .insert(name.to_owned(), location);
                 location
-            },
+            }
             Some(location) => location,
         }
     }
@@ -112,7 +122,9 @@ impl ShaderProgram {
 
     pub fn set_uniform4f(&mut self, name: &str, values: &[f32]) -> &Self {
         let location = self.get_uniform_location(name);
-        gl_call!(gl::Uniform4f(location, values[0], values[1], values[2], values[3]));
+        gl_call!(gl::Uniform4f(
+            location, values[0], values[1], values[2], values[3]
+        ));
         self
     }
 
@@ -140,14 +152,13 @@ impl ShaderProgram {
         self
     }
 
-
-    pub fn set_uniform1iv(&mut self, name: &str, value: &[i32]) -> &Self{
+    pub fn set_uniform1iv(&mut self, name: &str, value: &[i32]) -> &Self {
         let location = self.get_uniform_location(name);
         gl_call!(gl::Uniform1iv(location, value.len() as i32, value.as_ptr()));
         self
     }
 
-    pub fn from_shaders(vertex: ShaderPart, fragment: ShaderPart) -> Result<ShaderProgram, String>{
+    pub fn from_shaders(vertex: ShaderPart, fragment: ShaderPart) -> Result<ShaderProgram, String> {
         let program_id = gl_call!(gl::CreateProgram());
 
         gl_call!(gl::AttachShader(program_id, vertex.id));
@@ -176,7 +187,10 @@ impl ShaderProgram {
         gl_call!(gl::DetachShader(program_id, vertex.id));
         gl_call!(gl::DetachShader(program_id, fragment.id));
 
-        Ok(ShaderProgram { id: program_id, uniform_cache: Mutex::new(HashMap::new()) })
+        Ok(ShaderProgram {
+            id: program_id,
+            uniform_cache: Mutex::new(HashMap::new()),
+        })
     }
 }
 

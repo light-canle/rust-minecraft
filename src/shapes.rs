@@ -1,82 +1,107 @@
 use crate::chunk_manager::Sides;
+use crate::UVFaces;
 
 #[rustfmt::skip]
-pub fn unit_cube_array(
+pub unsafe fn write_unit_cube_to_ptr(
+    ptr: *mut f32,
     position : (f32, f32, f32),
-    uv_bl: (f32, f32),
-    uv_tr: (f32, f32),
+    (front_uv, back_uv, top_uv, bottom_uv, left_uv, right_uv) : UVFaces,
     sides : Sides
 
-) -> Vec<f32> {
+) -> u32 {
     let (x, y, z) = position;
     let (right, left, top, bottom, front, back) = sides;
-    let mut array = Vec::new();
+
+    let vertex_size = 5;
+    let vertex_per_face = 6;
+    let face_size = vertex_size * vertex_per_face;
+
+    let mut idx = 0;
+    let mut copied_vertices = 0;
 
     if front {
-        array.extend_from_slice(&[
-            0.0 + x, 0.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-            1.0 + x, 0.0 + y, 1.0 + z, uv_tr.0, uv_bl.1,
-            1.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 1.0 + z, uv_bl.0, uv_tr.1,
-            0.0 + x, 0.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            0.0 + x, 0.0 + y, 1.0 + z, front_uv.0, front_uv.1,
+            1.0 + x, 0.0 + y, 1.0 + z, front_uv.2, front_uv.1,
+            1.0 + x, 1.0 + y, 1.0 + z, front_uv.2, front_uv.3,
+            1.0 + x, 1.0 + y, 1.0 + z, front_uv.2, front_uv.3,
+            0.0 + x, 1.0 + y, 1.0 + z, front_uv.0, front_uv.3,
+            0.0 + x, 0.0 + y, 1.0 + z, front_uv.0, front_uv.1,
+        ].as_ptr(), face_size);
+
+        idx += face_size as isize;
+        copied_vertices += vertex_per_face;
     }
 
     if back {
-        array.extend_from_slice(&[
-            1.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-            0.0 + x, 0.0 + y, 0.0 + z, uv_tr.0, uv_bl.1,
-            0.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 1.0 + y, 0.0 + z, uv_bl.0, uv_tr.1,
-            1.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            1.0 + x, 0.0 + y, 0.0 + z, back_uv.0, back_uv.1,
+            0.0 + x, 0.0 + y, 0.0 + z, back_uv.2, back_uv.1,
+            0.0 + x, 1.0 + y, 0.0 + z, back_uv.2, back_uv.3,
+            0.0 + x, 1.0 + y, 0.0 + z, back_uv.2, back_uv.3,
+            1.0 + x, 1.0 + y, 0.0 + z, back_uv.0, back_uv.3,
+            1.0 + x, 0.0 + y, 0.0 + z, back_uv.0, back_uv.1,
+        ].as_ptr(), face_size);
+
+        idx += face_size as isize;
+        copied_vertices += vertex_per_face;
     }
 
     if left {
-        array.extend_from_slice(&[
-            0.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-            0.0 + x, 0.0 + y, 1.0 + z, uv_tr.0, uv_bl.1,
-            0.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 0.0 + z, uv_bl.0, uv_tr.1,
-            0.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            0.0 + x, 0.0 + y, 0.0 + z, left_uv.0, left_uv.1,
+            0.0 + x, 0.0 + y, 1.0 + z, left_uv.2, left_uv.1,
+            0.0 + x, 1.0 + y, 1.0 + z, left_uv.2, left_uv.3,
+            0.0 + x, 1.0 + y, 1.0 + z, left_uv.2, left_uv.3,
+            0.0 + x, 1.0 + y, 0.0 + z, left_uv.0, left_uv.3,
+            0.0 + x, 0.0 + y, 0.0 + z, left_uv.0, left_uv.1,
+        ].as_ptr(), face_size);
+
+        idx += face_size as isize;
+        copied_vertices += vertex_per_face;
     }
 
     if right {
-        array.extend_from_slice(&[
-            1.0 + x, 0.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-            1.0 + x, 0.0 + y, 0.0 + z, uv_tr.0, uv_bl.1,
-            1.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 1.0 + y, 1.0 + z, uv_bl.0, uv_tr.1,
-            1.0 + x, 0.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            1.0 + x, 0.0 + y, 1.0 + z, right_uv.0, right_uv.1,
+            1.0 + x, 0.0 + y, 0.0 + z, right_uv.2, right_uv.1,
+            1.0 + x, 1.0 + y, 0.0 + z, right_uv.2, right_uv.3,
+            1.0 + x, 1.0 + y, 0.0 + z, right_uv.2, right_uv.3,
+            1.0 + x, 1.0 + y, 1.0 + z, right_uv.0, right_uv.3,
+            1.0 + x, 0.0 + y, 1.0 + z, right_uv.0, right_uv.1,
+        ].as_ptr(), face_size);
+
+        idx += face_size as isize;
+        copied_vertices += vertex_per_face;
     }
 
     if top {
-        array.extend_from_slice(&[
-            0.0 + x, 1.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-            1.0 + x, 1.0 + y, 1.0 + z, uv_tr.0, uv_bl.1,
-            1.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 1.0 + y, 0.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 0.0 + z, uv_bl.0, uv_tr.1,
-            0.0 + x, 1.0 + y, 1.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            0.0 + x, 1.0 + y, 1.0 + z, top_uv.0, top_uv.1,
+            1.0 + x, 1.0 + y, 1.0 + z, top_uv.2, top_uv.1,
+            1.0 + x, 1.0 + y, 0.0 + z, top_uv.2, top_uv.3,
+            1.0 + x, 1.0 + y, 0.0 + z, top_uv.2, top_uv.3,
+            0.0 + x, 1.0 + y, 0.0 + z, top_uv.0, top_uv.3,
+            0.0 + x, 1.0 + y, 1.0 + z, top_uv.0, top_uv.1,
+        ].as_ptr(), face_size);
+
+        idx += face_size as isize;
+        copied_vertices += vertex_per_face;
     }
 
     if bottom {
-        array.extend_from_slice(&[
-            0.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-            1.0 + x, 0.0 + y, 0.0 + z, uv_tr.0, uv_bl.1,
-            1.0 + x, 0.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            1.0 + x, 0.0 + y, 1.0 + z, uv_tr.0, uv_tr.1,
-            0.0 + x, 0.0 + y, 1.0 + z, uv_bl.0, uv_tr.1,
-            0.0 + x, 0.0 + y, 0.0 + z, uv_bl.0, uv_bl.1,
-        ]);
+        ptr.offset(idx).copy_from_nonoverlapping([
+            0.0 + x, 0.0 + y, 0.0 + z, bottom_uv.0, bottom_uv.1,
+            1.0 + x, 0.0 + y, 0.0 + z, bottom_uv.2, bottom_uv.1,
+            1.0 + x, 0.0 + y, 1.0 + z, bottom_uv.2, bottom_uv.3,
+            1.0 + x, 0.0 + y, 1.0 + z, bottom_uv.2, bottom_uv.3,
+            0.0 + x, 0.0 + y, 1.0 + z, bottom_uv.0, bottom_uv.3,
+            0.0 + x, 0.0 + y, 0.0 + z, bottom_uv.0, bottom_uv.1,
+        ].as_ptr(), face_size);
+
+        
+        copied_vertices += vertex_per_face;
     }
 
-    array
+    copied_vertices as u32
 }

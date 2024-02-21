@@ -1,24 +1,24 @@
 use crate::gl_call;
 use crate::shader::ShaderProgram;
-use std::cmp::Ordering;
-use std::os::raw::c_void;
-use std::collections::HashMap;
 use itertools::Itertools;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::os::raw::c_void;
 
 #[derive(Clone, Debug)]
-pub struct QuadProps{
-    pub position : (f32, f32, f32),
-    pub size : (f32, f32),
-    pub texture_id : u32,
+pub struct QuadProps {
+    pub position: (f32, f32, f32),
+    pub size: (f32, f32),
+    pub texture_id: u32,
     pub texture_coords: (f32, f32, f32, f32),
 }
 
-pub struct Renderer{
+pub struct Renderer {
     texture_units: u32,
     quads: HashMap<u32, Vec<QuadProps>>,
-    vertices : Vec<f32>,
-    vbo : u32,
-    vao : u32,
+    vertices: Vec<f32>,
+    vbo: u32,
+    vao: u32,
 }
 
 impl Default for Renderer {
@@ -27,15 +27,18 @@ impl Default for Renderer {
     }
 }
 
-impl Renderer{
-    pub fn new(capacity: usize) -> Self{
+impl Renderer {
+    pub fn new(capacity: usize) -> Self {
         let mut texture_units = 0;
-        gl_call!(gl::GetIntegerv(gl::MAX_TEXTURE_IMAGE_UNITS, &mut texture_units));
+        gl_call!(gl::GetIntegerv(
+            gl::MAX_TEXTURE_IMAGE_UNITS,
+            &mut texture_units
+        ));
         assert!(texture_units > 0);
 
         let texture_units = texture_units as u32;
-        let quads : HashMap<u32, Vec<QuadProps>> = HashMap::new();
-        
+        let quads: HashMap<u32, Vec<QuadProps>> = HashMap::new();
+
         let mut vertices = Vec::new();
         vertices.reserve(capacity);
 
@@ -44,14 +47,14 @@ impl Renderer{
         gl_call!(gl::CreateBuffers(1, &mut vbo));
 
         gl_call!(gl::NamedBufferData(
-            vbo, 
+            vbo,
             (capacity * std::mem::size_of::<f32>()) as isize,
             std::ptr::null(),
             gl::DYNAMIC_DRAW
         ));
 
         // VAO 설정
-        let mut vao : u32 = 0;
+        let mut vao: u32 = 0;
         let binding_index_pos = 0;
         let binding_index_color = 1;
 
@@ -60,21 +63,21 @@ impl Renderer{
         // x,y 위치
         gl_call!(gl::EnableVertexArrayAttrib(vao, 0));
         gl_call!(gl::VertexArrayAttribFormat(
-            vao,    // vao 객체
-            0,      // 속성 번호
-            3,      // 크기 (float 개수)
+            vao,       // vao 객체
+            0,         // 속성 번호
+            3,         // 크기 (float 개수)
             gl::FLOAT, // 데이터 타입
             gl::FALSE, // 정규화 여부
-            0       // VBO에서의 시작 위치
+            0          // VBO에서의 시작 위치
         ));
 
-        gl_call!(gl::VertexArrayAttribBinding(vao, 0 ,binding_index_pos));
+        gl_call!(gl::VertexArrayAttribBinding(vao, 0, binding_index_pos));
         gl_call!(gl::VertexArrayVertexBuffer(
-            vao, // VAO
-            binding_index_pos, // 속성 인덱스
-            vbo, // VBO
-            0, // offset
-            (6 * std::mem::size_of::<f32>()) as i32 // 정점 1개의 데이터 크기
+            vao,                                     // VAO
+            binding_index_pos,                       // 속성 인덱스
+            vbo,                                     // VBO
+            0,                                       // offset
+            (6 * std::mem::size_of::<f32>()) as i32  // 정점 1개의 데이터 크기
         ));
         // 텍스쳐 정보
         gl_call!(gl::EnableVertexArrayAttrib(vao, 1));
@@ -88,7 +91,7 @@ impl Renderer{
             (3 * std::mem::size_of::<f32>()) as u32
         ));
 
-        gl_call!(gl::VertexArrayAttribBinding(vao, 1 ,binding_index_color));
+        gl_call!(gl::VertexArrayAttribBinding(vao, 1, binding_index_color));
 
         gl_call!(gl::VertexArrayVertexBuffer(
             vao,
@@ -101,27 +104,28 @@ impl Renderer{
         Renderer {
             texture_units,
             quads,
-            vertices, 
-            vbo, 
+            vertices,
+            vbo,
             vao,
         }
     }
-    pub fn begin_batch(&mut self){
+    pub fn begin_batch(&mut self) {
         self.quads.clear();
         self.vertices.clear();
     }
 
-    pub fn submit_quad(&mut self, quad_props : QuadProps){
-        match self.quads.get_mut(&quad_props.texture_id){
+    pub fn submit_quad(&mut self, quad_props: QuadProps) {
+        match self.quads.get_mut(&quad_props.texture_id) {
             Some(quads) => quads,
             None => {
                 self.quads.insert(quad_props.texture_id, Vec::new());
                 self.quads.get_mut(&quad_props.texture_id).unwrap()
             }
-        }.push(quad_props);
+        }
+        .push(quad_props);
     }
 
-    pub fn end_batch(&mut self,  program: &mut ShaderProgram) {
+    pub fn end_batch(&mut self, program: &mut ShaderProgram) {
         let mut draw_calls = 0;
 
         // TODO: Handle quads without textures

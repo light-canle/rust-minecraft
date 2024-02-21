@@ -1,15 +1,15 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub fn now() -> Duration{
+pub fn now() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
 
-pub struct DeltaTime{
+pub struct DeltaTime {
     pub prev: Duration,
     pub delta: Duration,
 }
 
-impl Default for DeltaTime{
+impl Default for DeltaTime {
     fn default() -> Self {
         DeltaTime {
             prev: now(),
