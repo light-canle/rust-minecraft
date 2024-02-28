@@ -10,11 +10,12 @@ use noise::{NoiseFn, SuperSimplex};
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use crate::block_texture_sides::{BlockFaces, get_uv_every_side};
+use rand::random;
 
 pub const CHUNK_SIZE: u32 = 16;
 pub const CHUNK_VOLUME: u32 = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
-pub type Sides = (bool, bool, bool, bool, bool, bool);
+pub type Sides = [bool; 6];
 
 pub struct ChunkManager {
     pub loaded_chunks: HashMap<(i32, i32, i32), Chunk>,
@@ -39,7 +40,7 @@ impl ChunkManager {
 
     pub fn simplex(&mut self) {
         let ss = SuperSimplex::new(1296);
-        let n = 5;
+        let n = 10;
 
         for y in 0..16 {
             for z in -n..=n {
@@ -59,6 +60,37 @@ impl ChunkManager {
                 self.set_block(x, y - 1, z, BlockID::Dirt);
                 self.set_block(x, y - 2, z, BlockID::Dirt);
                 self.set_block(x, y - 3, z, BlockID::Cobblestone);
+
+                if random::<u32>() % 100 == 0 {
+                    let h = 5;
+                    for i in y+1..y+1+h{
+                        self.set_block(x, i, z, BlockID::OakLog)
+                    }
+
+                    for yy in y + h - 2..=y + h - 1{
+                        for xx in x - 2..=x + 2{
+                            for zz in z - 2..=z + 2{
+                                if xx != x || zz != z {
+                                    self.set_block(xx, yy, zz, BlockID::OakLeaves);
+                                }
+                            }
+                        }
+                    }
+
+                    for xx in x - 1..=x + 1{
+                        for zz in z - 1..=z + 1{
+                            if xx != x || zz != z {
+                                self.set_block(xx, y + h, zz, BlockID::OakLeaves);
+                            }
+                        }
+                    }
+
+                    self.set_block(x, y + h + 1, z, BlockID::OakLeaves);
+                    self.set_block(x + 1, y + h + 1, z, BlockID::OakLeaves);
+                    self.set_block(x - 1, y + h + 1, z, BlockID::OakLeaves);
+                    self.set_block(x, y + h + 1, z + 1, BlockID::OakLeaves);
+                    self.set_block(x, y + h + 1, z - 1, BlockID::OakLeaves);
+                }
             }
         }
     }
@@ -123,15 +155,17 @@ impl ChunkManager {
             let (cx, cy, cz) = coords;
             let chunk = self.loaded_chunks.get(&coords);
 
-            if chunk.is_some() {
+            if let Some(chunk) = chunk {
                 let sides_vec = active_sides.entry(coords).or_default();
 
                 for by in 0..CHUNK_SIZE {
                     for bz in 0..CHUNK_SIZE {
                         for bx in 0..CHUNK_SIZE {
-                            let (gx, gy, gz) =
-                                ChunkManager::get_global_coords((cx, cy, cz, bx, by, bz));
-                            sides_vec.push(self.get_active_sides_of_block(gx, gy, gz));
+                            if !chunk.get_block(bx, by, bz).is_air(){
+                                let (gx, gy, gz) =
+                                    ChunkManager::get_global_coords((cx, cy, cz, bx, by, bz));
+                                sides_vec.push(self.get_active_sides_of_block(gx, gy, gz));
+                            }
                         }
                     }
                 }
@@ -139,11 +173,29 @@ impl ChunkManager {
         }
 
         for coords in dirty_chunks.iter() {
-            let mut idx = 0;
             let chunk = self.loaded_chunks.get_mut(coords);
 
             if let Some(chunk) = chunk {
+                chunk.dirty = false;
+                chunk.dirty_neighbours.clear();
+                chunk.vertices_drawn = 0;
+
+                let sides = active_sides.get(coords).unwrap();
+                let n_visible_faces = sides.iter().map(|faces| faces.iter().fold(0, |acc, &x| acc + x as u32)).fold(0, |acc,  n| acc + n); 
+
+                if n_visible_faces == 0 {
+                    continue;
+                }
+
+                gl_call!(gl::NamedBufferData(
+                    chunk.vbo,
+                    (180 * std::mem::size_of::<f32>() * n_visible_faces as usize) as isize,
+                    std::ptr::null(),
+                    gl::DYNAMIC_DRAW
+                ));
+
                 let vbo_ptr = gl_call!(gl::MapNamedBuffer(chunk.vbo, gl::WRITE_ONLY)) as *mut f32;
+                let mut idx = 0;
 
                 let sides_vec = active_sides.get(coords).unwrap();
                 let mut cnt = 0;
@@ -164,16 +216,12 @@ impl ChunkManager {
 
                                 chunk.vertices_drawn += copied_vertices;
                                 idx += copied_vertices as isize * 5;
+                                cnt += 1;
                             }
-
-                            cnt += 1;
                         }
                     }
                 }
                 gl_call!(gl::UnmapNamedBuffer(chunk.vbo));
-
-                chunk.dirty = false;
-                chunk.dirty_neighbours.clear();
             }
         }
     }
@@ -181,34 +229,38 @@ impl ChunkManager {
     pub fn get_active_sides_of_block(&self, x: i32, y: i32, z: i32) -> Sides {
         let right = self
             .get_block(x + 1, y, z)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
         let left = self
             .get_block(x - 1, y, z)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
         let top = self
             .get_block(x, y + 1, z)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
         let bottom = self
             .get_block(x, y - 1, z)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
         let front = self
             .get_block(x, y, z + 1)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
         let back = self
             .get_block(x, y, z - 1)
-            .filter(|&b| b != BlockID::Air)
+            .filter(|&b| !b.is_transparent())
             .is_none();
 
-        (right, left, top, bottom, front, back)
+        [right, left, top, bottom, front, back]
     }
 
     pub fn render_loaded_chunks(&mut self, program: &mut ShaderProgram) {
         for ((x, y, z), chunk) in &self.loaded_chunks {
+            // skip rendering the chunk if there is nothing to draw
+            if chunk.vertices_drawn == 0 {
+                continue;
+            }
             let model_matrix = {
                 let translate_matrix =
                     Matrix4::new_translation(&vec3(*x as f32, *y as f32, *z as f32).scale(16.0));

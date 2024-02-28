@@ -138,6 +138,10 @@ fn main() {
     });
     texture_map.insert(BlockID::Cobblestone, BlockFaces::All("blocks/cobblestone.png"));
     texture_map.insert(BlockID::Obsidian, BlockFaces::All("blocks/obsidian.png"));
+    texture_map.insert(BlockID::OakLog, BlockFaces::Sides { 
+        sides: "blocks/oak_log.png", top: "blocks/oak_log_top.png", bottom: "blocks/oak_log_top.png" 
+    });
+    texture_map.insert(BlockID::OakLeaves, BlockFaces::All("blocks/oak_leaves.png"));
 
     let mut atlas = 0;
     gl_call!(gl::CreateTextures(gl::TEXTURE_2D, 1, &mut atlas));

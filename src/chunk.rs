@@ -12,6 +12,21 @@ pub enum BlockID {
     GrassBlock,
     Cobblestone,
     Obsidian,
+    OakLog,
+    OakLeaves,
+}
+
+impl BlockID {
+    pub fn is_air(&self) -> bool {
+        self == &BlockID::Air
+    }
+
+    pub fn is_transparent(&self) -> bool {
+        match self {
+            BlockID::Air | BlockID::OakLeaves => true,
+            _ => false,
+        }
+    }
 }
 
 impl Distribution<BlockID> for Standard {
