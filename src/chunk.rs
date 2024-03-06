@@ -14,6 +14,8 @@ pub enum BlockID {
     Obsidian,
     OakLog,
     OakLeaves,
+    Debug,
+    Debug2,
 }
 
 impl BlockID {
@@ -71,12 +73,7 @@ fn create_vao_vbo() -> (u32, u32) {
 
     let mut vbo = 0;
     gl_call!(gl::CreateBuffers(1, &mut vbo));
-    gl_call!(gl::NamedBufferData(
-        vbo,
-        (180 * CHUNK_VOLUME as usize * std::mem::size_of::<f32>()) as isize,
-        std::ptr::null(),
-        gl::DYNAMIC_DRAW
-    ));
+
 
     gl_call!(gl::VertexArrayVertexBuffer(
         vao,
