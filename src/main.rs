@@ -12,7 +12,7 @@ pub mod texture;
 pub mod util;
 pub mod block_texture_sides;
 pub mod aabb;
-pub mod collisions;
+pub mod physics;
 
 use crate::debugging::*;
 use crate::shader::{ShaderPart, ShaderProgram};
@@ -30,7 +30,8 @@ use std::ffi::CString;
 use std::os::raw::c_void;
 use crate::block_texture_sides::BlockFaces;
 use crate::aabb::AABB;
-use crate::collisions::player_collision_detection;
+use std::time;
+use crate::physics::{PhysicsManager, PlayerPhysicsState};
 
 
 type UVCoords = (f32, f32, f32, f32);
@@ -68,39 +69,15 @@ const PLAYER_EYES_HEIGHT: f32 = 1.6;
 const PLAYER_HALF_WIDTH: f32 = PLAYER_WIDTH / 2.0;
 const PLAYER_HALF_HEIGHT: f32 = PLAYER_HEIGHT / 2.0;
 
-pub struct Player {
-    pub position : Vec3,
-    pub aabb : AABB,
-    pub velocity : Vec3,
-    pub acceleration : Vec3,
+pub struct PlayerRenderState {
+    
     pub rotation : Vec3,
 }
 
-impl Player {
-    pub fn new_at_position(position: Vec3) -> Self {
-        Self{
-            position,
-            aabb : {
-                let mins = 
-                vec3(position.x - PLAYER_HALF_WIDTH, 
-                    position.y,
-                     position.z - PLAYER_HALF_WIDTH);
-                let maxs = 
-                     vec3(position.x + PLAYER_HALF_WIDTH, 
-                         position.y + PLAYER_HEIGHT,
-                          position.z + PLAYER_HALF_WIDTH);
-                AABB::new(mins, maxs)
-            },
-            velocity : vec3(0.0, 0.0, 0.0),
-            acceleration : vec3(0.0, 0.0, 0.0),
-            rotation : vec3(0.0, 0.0, 0.0),
-        }
+impl PlayerRenderState {
+    pub fn new() -> Self{
+        Self { rotation: vec3(0.0, 0.0, 0.0) }
     }
-
-    pub fn get_camera_position(&self) -> Vec3 {
-        self.position + vec3(0.0, PLAYER_EYES_HEIGHT, 0.0)
-    }
-
     pub fn get_camera_rotation(&mut self) -> &mut Vec3 {
         &mut self.rotation
     }
@@ -165,7 +142,9 @@ fn main() {
     gl_call!(gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA));
     gl_call!(gl::Viewport(0, 0, 800, 800));
 
-    let mut player = Player::new_at_position(vec3(0.0, 30.0, 0.0));
+    let mut player_render_state = PlayerRenderState::new();
+    let mut physics_manager = PhysicsManager::new(1.0 / 60.0, 
+    PlayerPhysicsState::new_at_position(vec3(0.0f32, 30.0, 0.0)));
 
     let vert =
         ShaderPart::from_vert_source(&CString::new(include_str!("shaders/diffuse.vert")).unwrap())
@@ -325,11 +304,11 @@ fn main() {
                     let rel_x = x - prev_cursor_pos.0;
                     let rel_y = y - prev_cursor_pos.1;
 
-                    player.rotation.y += rel_x as f32 / 100.0;
-                    player.rotation.x += rel_y as f32 / 100.0;
+                    player_render_state.rotation.y += rel_x as f32 / 100.0;
+                    player_render_state.rotation.x += rel_y as f32 / 100.0;
 
-                    player.rotation.x = clamp(
-                        player.rotation.x,
+                    player_render_state.rotation.x = clamp(
+                        player_render_state.rotation.x,
                         -pi::<f32>() / 2.0 + 0.0001,
                         pi::<f32>() / 2.0 - 0.0001,
                     );
@@ -341,8 +320,10 @@ fn main() {
                 }
 
                 glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
+                    let player = physics_manager.get_current_state();
+
                     if player.velocity.y == 0.0{
-                        player.velocity.y += 0.09;
+                        player.velocity.y = 10.0;
                     }
                 }
 
@@ -351,7 +332,7 @@ fn main() {
                 }
 
                 glfw::WindowEvent::MouseButton(button, Action::Press, _) => {
-                    let forward = forward(&player.rotation);
+                    let forward = forward(&player_render_state.rotation);
                     let get_voxel = |x: i32, y: i32, z: i32| {
                         chunk_manager
                             .get_block(x, y, z)
@@ -359,6 +340,7 @@ fn main() {
                             .and_then(|_| Some((x, y, z)))
                     };
 
+                    let player = physics_manager.get_current_state();
                     let hit =
                         raycast::raycast(&get_voxel, &player.get_camera_position(), &forward.normalize(), 400.0);
 
@@ -382,10 +364,12 @@ fn main() {
             }
         }
 
-        let multiplier = 0.008_f32;
+        let multiplier = 6.0_f32;
 
-        let mut rotation = player.rotation.clone();
+        let mut rotation = player_render_state.rotation;
         rotation.x = 0.0;
+
+        let player = physics_manager.get_current_state();
 
         if input_cache.is_key_pressed(Key::W) {
             player.acceleration += forward(&rotation).scale(multiplier);
@@ -404,7 +388,120 @@ fn main() {
                 .scale(multiplier);
         }
 
-        let direction = forward(&player.rotation);
+        use crate::physics::get_block_aabb;
+        use num_traits::identities::Zero;
+
+        let render_state = physics_manager.step(&|mut previous_state : PlayerPhysicsState, _t, dt|{
+            let player = &mut previous_state;
+            player.acceleration.y = -32.0;
+            player.velocity += player.acceleration * dt;
+            
+            let separated_axis =  &[
+                vec3(player.velocity.x, 0.0, 0.0),
+                vec3(0.0, player.velocity.y, 0.0),
+                vec3(0.0, 0.0, player.velocity.z),
+            ];
+
+            for v in separated_axis {
+                player.aabb.translate(&(v * dt));
+
+                let player_mins = &player.aabb.mins;
+                let player_maxs = &player.aabb.maxs;
+
+                let block_min = vec3(player_mins.x.floor() as i32, player_mins.y.floor() as i32, player_mins.z.floor() as i32);
+                let block_max = vec3(player_maxs.x.floor() as i32, player_maxs.y.floor() as i32, player_maxs.z.floor() as i32);
+
+                let mut blocks_collided = None;
+
+                'outer: for y in block_min.y..=block_max.y {
+                    for z in block_min.z..=block_max.z{
+                        for x in block_min.x..=block_max.x{
+                            if let Some(block) = chunk_manager.get_block(x, y, z) {
+                                if block.is_air(){
+                                    continue;
+                                }
+
+                                let block_aabb = get_block_aabb(&vec3(x as f32, y as f32, z as f32));
+
+                                if player.aabb.intersects(&block_aabb){
+                                    blocks_collided = Some(vec3(x as f32, y as f32, z as f32));
+                                    break 'outer
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 충돌에 대한 반응
+                if let Some(block_collided) = blocks_collided {
+                    let block_aabb = get_block_aabb(&block_collided);
+
+                    if !v.x.is_zero() {
+                        if v.x < 0.0 {
+                            player.aabb = AABB::new(
+                                vec3(block_aabb.maxs.x, player.aabb.mins.y, player.aabb.mins.z),
+                                vec3(block_aabb.maxs.x + PLAYER_WIDTH, player.aabb.maxs.y, player.aabb.maxs.z),
+                            )
+                        } else {
+                            player.aabb = AABB::new(
+                                vec3(block_aabb.mins.x - PLAYER_WIDTH, player.aabb.mins.y, player.aabb.mins.z),
+                                vec3(block_aabb.mins.x, player.aabb.maxs.y, player.aabb.maxs.z),
+                            )
+                        }
+
+                        player.velocity.x = 0.0;
+                    }
+
+                    if !v.y.is_zero() {
+                        if v.y < 0.0 {
+                            player.aabb = AABB::new(
+                                vec3(player.aabb.mins.x, block_aabb.maxs.y, player.aabb.mins.z),
+                                vec3(player.aabb.maxs.x, block_aabb.maxs.y + PLAYER_HEIGHT, player.aabb.maxs.z),
+                            )
+                        } else {
+                            player.aabb = AABB::new(
+                                vec3(player.aabb.mins.x, block_aabb.mins.y - PLAYER_HEIGHT, player.aabb.mins.z),
+                                vec3(player.aabb.maxs.x, block_aabb.mins.y, player.aabb.maxs.z),
+                            )
+                        }
+
+                        player.velocity.y = 0.0;
+                    }
+
+                    if !v.z.is_zero() {
+                        if v.z < 0.0 {
+                            player.aabb = AABB::new(
+                                vec3(player.aabb.mins.x, player.aabb.mins.y, block_aabb.maxs.z),
+                                vec3(player.aabb.maxs.x, player.aabb.maxs.y, block_aabb.maxs.z + PLAYER_WIDTH),
+                            )
+                        } else {
+                            player.aabb = AABB::new(
+                                vec3(player.aabb.mins.x, player.aabb.mins.y, block_aabb.mins.z - PLAYER_WIDTH),
+                                vec3(player.aabb.maxs.x, player.aabb.maxs.y, block_aabb.mins.z),
+                            )
+                        }
+
+                        player.velocity.z = 0.0;
+                    }
+                }
+            }
+
+            player.position.x = player.aabb.mins.x + PLAYER_HALF_WIDTH;
+            player.position.y = player.aabb.mins.y;
+            player.position.z = player.aabb.mins.z + PLAYER_HALF_WIDTH;
+
+            player.velocity.x *= 0.96;
+            player.velocity.z *= 0.96;
+            player.acceleration.x = 0.0;
+            player.acceleration.y = 0.0;
+            player.acceleration.z = 0.0;
+
+            previous_state
+        });
+
+        let player = &render_state;
+
+        let direction = forward(&player_render_state.rotation);
 
         let camera_position = player.get_camera_position();
         let view_matrix = nalgebra_glm::look_at(
@@ -427,17 +524,6 @@ fn main() {
         gl_call!(gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
 
         chunk_manager.render_loaded_chunks(&mut program);
-
-        player.acceleration.y = -0.003;
-        player.velocity += player.acceleration;
-
-        player_collision_detection(&mut player, &chunk_manager);
-
-        player.velocity.x *= 0.96;
-        player.velocity.z *= 0.96;
-        player.acceleration.x = 0.0;
-        player.acceleration.y = 0.0;
-        player.acceleration.z = 0.0;
 
         // 프론트 버퍼와 백 버퍼 교체 - 프리징 방지
         window.swap_buffers();
