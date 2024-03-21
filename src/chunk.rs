@@ -74,7 +74,6 @@ fn create_vao_vbo() -> (u32, u32) {
     let mut vbo = 0;
     gl_call!(gl::CreateBuffers(1, &mut vbo));
 
-
     gl_call!(gl::VertexArrayVertexBuffer(
         vao,
         0,

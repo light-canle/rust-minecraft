@@ -1,3 +1,4 @@
+use crate::block_texture_sides::{get_uv_every_side, BlockFaces};
 use crate::shader::ShaderProgram;
 use crate::UVCoords;
 use crate::{
@@ -7,10 +8,9 @@ use crate::{
 use nalgebra::Matrix4;
 use nalgebra_glm::vec3;
 use noise::{NoiseFn, SuperSimplex};
+use rand::random;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
-use crate::block_texture_sides::{BlockFaces, get_uv_every_side};
-use rand::random;
 
 pub const CHUNK_SIZE: u32 = 16;
 pub const CHUNK_VOLUME: u32 = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
@@ -63,13 +63,13 @@ impl ChunkManager {
 
                 if random::<u32>() % 100 == 0 {
                     let h = 5;
-                    for i in y+1..y+1+h{
+                    for i in y + 1..y + 1 + h {
                         self.set_block(x, i, z, BlockID::OakLog)
                     }
 
-                    for yy in y + h - 2..=y + h - 1{
-                        for xx in x - 2..=x + 2{
-                            for zz in z - 2..=z + 2{
+                    for yy in y + h - 2..=y + h - 1 {
+                        for xx in x - 2..=x + 2 {
+                            for zz in z - 2..=z + 2 {
                                 if xx != x || zz != z {
                                     self.set_block(xx, yy, zz, BlockID::OakLeaves);
                                 }
@@ -77,8 +77,8 @@ impl ChunkManager {
                         }
                     }
 
-                    for xx in x - 1..=x + 1{
-                        for zz in z - 1..=z + 1{
+                    for xx in x - 1..=x + 1 {
+                        for zz in z - 1..=z + 1 {
                             if xx != x || zz != z {
                                 self.set_block(xx, y + h, zz, BlockID::OakLeaves);
                             }
@@ -161,7 +161,7 @@ impl ChunkManager {
                 for by in 0..CHUNK_SIZE {
                     for bz in 0..CHUNK_SIZE {
                         for bx in 0..CHUNK_SIZE {
-                            if !chunk.get_block(bx, by, bz).is_air(){
+                            if !chunk.get_block(bx, by, bz).is_air() {
                                 let (gx, gy, gz) =
                                     ChunkManager::get_global_coords((cx, cy, cz, bx, by, bz));
                                 sides_vec.push(self.get_active_sides_of_block(gx, gy, gz));
@@ -181,7 +181,10 @@ impl ChunkManager {
                 chunk.vertices_drawn = 0;
 
                 let sides = active_sides.get(coords).unwrap();
-                let n_visible_faces = sides.iter().map(|faces| faces.iter().fold(0, |acc, &x| acc + x as u32)).fold(0, |acc,  n| acc + n); 
+                let n_visible_faces = sides
+                    .iter()
+                    .map(|faces| faces.iter().fold(0, |acc, &x| acc + x as u32))
+                    .fold(0, |acc, n| acc + n);
 
                 if n_visible_faces == 0 {
                     continue;
@@ -211,8 +214,14 @@ impl ChunkManager {
                                 let uvs = uv_map.get(&block).unwrap().clone();
                                 let uvs = get_uv_every_side(uvs);
 
-                                let copied_vertices = unsafe { write_unit_cube_to_ptr(
-                                    vbo_ptr.offset(idx), (x as f32, y as f32, z as f32), uvs, active_sides)};
+                                let copied_vertices = unsafe {
+                                    write_unit_cube_to_ptr(
+                                        vbo_ptr.offset(idx),
+                                        (x as f32, y as f32, z as f32),
+                                        uvs,
+                                        active_sides,
+                                    )
+                                };
 
                                 chunk.vertices_drawn += copied_vertices;
                                 idx += copied_vertices as isize * 5;
